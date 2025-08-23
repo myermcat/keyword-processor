@@ -13,6 +13,8 @@ CSV_FOLDER = "csv_outputs"
 ASSESSED_CSV = f"{CSV_FOLDER}/step1-products-assessed.csv"
 BATCH_SIZE = 20  # Increased batch size for efficiency
 
+
+
 async def main():
     """
     Main function to validate products using AIProcessor.
@@ -139,6 +141,9 @@ async def main():
                     enriched_result = assessment.copy()
                     enriched_result['Search Term'] = product['Search Term']
                     
+                    # Seasonality will be calculated by AI (restored to original approach)
+                    print(f"   🔬 {product['Search Term']}: Seasonality will be assessed by AI")
+                    
                     # Add all monthly data columns
                     for key, value in product.items():
                         if key != 'Search Term':
@@ -184,6 +189,7 @@ async def main():
                 # Continue with next batch instead of crashing
                 error_results = []
                 for j, product in enumerate(batch_products):
+                    # Use default values for error cases (AI will assess seasonality normally)
                     error_result = {
                         'Search Term': product['Search Term'],
                         'Seasonal': 3, 'Specificity': 3, 'Commodity': 3, 

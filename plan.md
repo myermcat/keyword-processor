@@ -131,8 +131,8 @@
 - [x] **Add batch processing** logic that both scripts can use
 - [x] **Implement error handling** and graceful shutdown in helper class
 - [x] **Add response parsing** based on script type
-- [ ] **Test helper class** with both brand_identifier and product_validator
-- [ ] **Refactor both scripts** to use the new helper class
+- [x] **Test helper class** with both brand_identifier and product_validator
+- [x] **Refactor both scripts** to use the new helper class
 - [ ] **Document helper class** usage and configuration
 
 ### 🏁 Final Result Handling & Completion Logic

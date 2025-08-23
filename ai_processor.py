@@ -412,20 +412,20 @@ Example response: makeup:no, nike:nike, toothbrush:no"""
 Products: {terms_text}
 
 Rate each product (0-5 scale) for:
-1. SEASONAL (0=year-round, 5=very seasonal)
-2. SPECIFICITY (0=too vague, 5=very specific)
-3. COMMODITY (0=brand-locked, 5=generic/competitive)
-4. SUBSCRIBE&SAVE (0=one-time, 5=perfect for subscription)
+1. SEASONAL DEMAND: 0=flat year, 5=strongly seasonal
+2. SPECIFICITY (0=broad term like "shampoo", 5=very narrow like "creatine monohydrate 5g gummies").
+3. COMMODITY: 0=brand-owned, 5=commodity
+4. SUBSCRIBE & SAVE: 0=not suitable, 5=perfect for subscription
 
 Plus binary (0/1) for:
-5. GATED (0=no restrictions, 1=age/verification required)
-6. ELECTRONICS/BATTERIES (0=no, 1=yes)
-7. INSURANCE/GOV (0=no, 1=yes)
+5. GATED (1 if restricted Amazon category (OTC, medical device, adult, pesticides, hazmat, etc. — not supplements), else 0)
+6. ELECTRONICS/BATTERIES (1 if electronic, battery-powered, or requires replacement heads/charging)
+7. INSURANCE/GOV (1 if reimbursed by insurance or supplied free by gov programs)
 
 IMPORTANT: You MUST respond with EXACTLY 7 numbers per product, separated by commas.
 Format: product1:1,2,3,4,0,0,0;product2:2,3,2,1,0,1,0
 
-Example: makeup:2,3,2,1,0,0,0;nike_shoes:1,4,1,2,0,0,0"""
+Example: makeup:2,2,3,2,0,0,0;nike_shoes:1,4,1,2,0,0,0"""
 
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -461,9 +461,8 @@ Example: makeup:2,3,2,1,0,0,0;nike_shoes:1,4,1,2,0,0,0"""
                             insurance = int(ratings[6])
                             
                             # Validate ranges
-                            if (0 <= seasonal <= 5 and 0 <= specificity <= 5 and 
-                                0 <= commodity <= 5 and 0 <= subscribe_save <= 5 and
-                                0 <= gated <= 1 and 0 <= electronics <= 1 and 0 <= insurance <= 1):
+                            if (0 <= seasonal <= 5 and 0 <= specificity <= 5 and 0 <= commodity <= 5 and 
+                                0 <= subscribe_save <= 5 and 0 <= gated <= 1 and 0 <= electronics <= 1 and 0 <= insurance <= 1):
                                 
                                 results.append({
                                     'Seasonal': seasonal,

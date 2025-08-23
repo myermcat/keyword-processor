@@ -25,8 +25,8 @@ def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
     with open(input_csv, 'r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            # Only keep rows where Brand is "NO_BRAND"
-            if row['Brand'].lower() == 'no_brand':
+            # Only keep rows where Brand is "no"
+            if row['Brand'].lower() == 'no':
                 no_brand_rows.append(row)
     
     # Write the filtered data to the new CSV

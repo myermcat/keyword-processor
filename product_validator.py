@@ -212,11 +212,11 @@ async def main():
         # All batches completed successfully!
         print(f"\n✅ All {total_batches} batches completed successfully!")
         
-        # Read all results from partial file
+        # Read all results from partial file - include ALL columns to preserve monthly data
         all_results = processor.read_partial_results([
             'Search Term', 'Seasonal', 'Specificity', 'Commodity', 'Subscribe&Save', 
             'Gated', 'Electronics_Batteries', 'Insurance_Gov'
-        ])
+        ] + [key for key in products[0].keys() if key not in ['Search Term', 'Brand']])
         
         # Step 2: Save final results
         print(f"\n🔍 STEP 2: Saving final results...")

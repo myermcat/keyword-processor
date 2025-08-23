@@ -192,7 +192,7 @@ async def main():
                 
                 # Show performance metrics
                 speed = processor.get_processing_speed()
-                eta = processor.get_eta(len(rows) - processed_count)
+                eta = processor.calculate_eta(len(rows) - processed_count)
                 print(f"   📊 Speed: {speed:.1f} items/minute, ETA: {eta}")
                 
                 # Add delay between batches to avoid rate limits

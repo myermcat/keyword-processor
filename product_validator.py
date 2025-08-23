@@ -164,7 +164,7 @@ async def main():
                 
                 # Show performance metrics
                 speed = processor.get_processing_speed()
-                eta = processor.get_eta(len(products) - processed_count)
+                eta = processor.calculate_eta(len(products) - processed_count)
                 print(f"   📊 Speed: {speed:.1f} items/minute, ETA: {eta}")
                 
                 # Show sample assessment for this batch

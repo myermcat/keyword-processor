@@ -1,12 +1,7 @@
 import csv
-import time
-import openai
 import os
-import json
-from typing import List, Tuple
 import asyncio
-import aiohttp
-from openai import AsyncOpenAI
+from ai_processor import AIProcessor
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -16,126 +11,8 @@ load_dotenv()
 INPUT_CSV = "search_terms_sample.csv"
 CSV_FOLDER = "csv_outputs"
 OUTPUT_CSV = f"{CSV_FOLDER}/step0-brand-filtered.csv"
-NO_BRAND_CSV = f"{CSV_FOLDER}/step0-no-brand-products.csv"  # New file for products without brands
-BATCH_SIZE = 5  # Process in small batches to avoid rate limits
-DELAY_BETWEEN_BATCHES = 1  # Seconds between batches
-
-# Progress tracking files
-PROGRESS_FILE = f"{CSV_FOLDER}/progress.json"
-PARTIAL_OUTPUT_CSV = f"{CSV_FOLDER}/step0-brand-filtered-PARTIAL.csv"
-
-# Initialize OpenAI client
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-
-def save_progress(current_batch: int, total_batches: int, processed_count: int, all_brands: List[str]):
-    """Save current progress to allow resuming later."""
-    progress_data = {
-        'current_batch': current_batch,
-        'total_batches': total_batches,
-        'processed_count': processed_count,
-        'all_brands': all_brands,
-        'timestamp': time.time(),
-        'input_file': INPUT_CSV
-    }
-    
-    # Ensure csv_outputs directory exists
-    os.makedirs(CSV_FOLDER, exist_ok=True)
-    
-    with open(PROGRESS_FILE, 'w') as f:
-        json.dump(progress_data, f, indent=2)
-    
-    print(f"💾 Progress saved: Batch {current_batch}/{total_batches} ({processed_count} keywords processed)")
-
-def load_progress() -> dict:
-    """Load existing progress if available."""
-    if os.path.exists(PROGRESS_FILE):
-        try:
-            with open(PROGRESS_FILE, 'r') as f:
-                progress = json.load(f)
-            
-            # Check if this is for the same input file
-            if progress.get('input_file') == INPUT_CSV:
-                return progress
-            else:
-                print("⚠️  Progress file found but for different input file. Starting fresh.")
-                return None
-        except Exception as e:
-            print(f"⚠️  Error loading progress file: {e}. Starting fresh.")
-            return None
-    return None
-
-def save_partial_results(rows: List[dict], all_brands: List[str], headers: List[str]):
-    """Save partial results to allow resuming later."""
-    # Ensure csv_outputs directory exists
-    os.makedirs(CSV_FOLDER, exist_ok=True)
-    
-    # Add brand column to rows
-    enriched_rows = []
-    for i, row in enumerate(rows):
-        if i < len(all_brands):
-            enriched_row = row.copy()
-            enriched_row['Brand'] = all_brands[i]
-            enriched_rows.append(enriched_row)
-    
-    # Write partial results
-    with open(PARTIAL_OUTPUT_CSV, 'w', newline='', encoding='utf-8') as file:
-        fieldnames = ['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term']
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(enriched_rows)
-    
-    print(f"💾 Partial results saved: {len(enriched_rows)} keywords with brand data")
-
-async def identify_brand(search_term: str) -> str:
-    """
-    Call OpenAI API to identify if a search term contains a brand.
-    Returns either the brand name or 'no'.
-    """
-    prompt = f"Does the following product name include a brand? {search_term}\n- If yes, return the brand name only.\n- If no, return exactly: 'no'"
-    
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You must respond with either a brand name (single phrase) or exactly 'no'. Do not include any other text, punctuation, or explanations."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=50,
-            temperature=0
-        )
-        
-        result = response.choices[0].message.content.strip().lower()
-        
-        # Ensure the result is either a brand name or 'no'
-        if result == 'no':
-            return 'no'
-        else:
-            # Clean up the response to get just the brand name
-            return result.strip('"').strip("'").strip()
-            
-    except Exception as e:
-        error_msg = str(e).lower()
-        
-        # Check for rate limit errors
-        if 'rate limit' in error_msg or '429' in error_msg or 'quota' in error_msg:
-            print(f"🚨 RATE LIMIT HIT for '{search_term}'. This is a critical error that requires immediate attention.")
-            raise Exception("RATE_LIMIT_HIT") from e
-        elif 'authentication' in error_msg or 'api key' in error_msg:
-            print(f"🔑 AUTHENTICATION ERROR for '{search_term}'. Check your OpenAI API key.")
-            raise Exception("AUTH_ERROR") from e
-        else:
-            print(f"⚠️  Error processing '{search_term}': {e}")
-            return 'error'
-
-async def process_batch(search_terms: List[str]) -> List[str]:
-    """
-    Process a batch of search terms concurrently.
-    """
-    tasks = [identify_brand(term) for term in search_terms]
-    results = await asyncio.gather(*tasks)
-    return results
+NO_BRAND_CSV = f"{CSV_FOLDER}/step0-no-brand-products.csv"
+BATCH_SIZE = 20  # Increased batch size for efficiency
 
 def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
     """
@@ -148,8 +25,8 @@ def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
     with open(input_csv, 'r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            # Only keep rows where Brand is "no"
-            if row['Brand'].lower() == 'no':
+            # Only keep rows where Brand is "NO_BRAND"
+            if row['Brand'].lower() == 'no_brand':
                 no_brand_rows.append(row)
     
     # Write the filtered data to the new CSV
@@ -165,24 +42,37 @@ def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
 
 async def main():
     """
-    Main function to process the CSV file.
+    Main function to process the CSV file using AIProcessor.
     """
     print("🎯 BRAND IDENTIFICATION SCRIPT")
     print("This script identifies brands in product search terms using AI.")
+    print(f"Using AIProcessor with batch size: {BATCH_SIZE}")
+    
+    # Check if OpenAI API key is set
+    if not os.getenv("OPENAI_API_KEY"):
+        print("❌ Error: OPENAI_API_KEY environment variable not set!")
+        print("Please set your OpenAI API key:")
+        print("export OPENAI_API_KEY='your-api-key-here'")
+        return False
+    
+    # Initialize AIProcessor
+    processor = AIProcessor("brand_identifier", batch_size=BATCH_SIZE)
     
     # Check for existing progress
-    existing_progress = load_progress()
+    existing_progress = processor.load_progress()
     
     if existing_progress:
         print(f"\n📋 EXISTING PROGRESS DETECTED!")
-        print(f"   Input file: {existing_progress['input_file']}")
-        print(f"   Last processed: Batch {existing_progress['current_batch']}/{existing_progress['total_batches']}")
+        print(f"   Script: {existing_progress['script_type']}")
+        print(f"   Last processed: Batch {existing_progress['current_batch']}")
         print(f"   Keywords processed: {existing_progress['processed_count']}")
-        print(f"   Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(existing_progress['timestamp']))}")
+        print(f"   Total items: {existing_progress['total_items']}")
+        print(f"   ETA: {existing_progress.get('eta', 'Unknown')}")
+        print(f"   Processing speed: {existing_progress.get('processing_speed', 0):.1f} items/minute")
         
         # Ask user what to do
         while True:
-            choice = input("\nDo you want to:\n1. Resume from where you left off\n2. Start fresh (overwrite existing results)\n3. View partial results\nEnter choice (1/2/3): ").strip()
+            choice = input("\nDo you want to:\n1. Resume from where you left off\n2. Start fresh (overwrite existing results)\n3. View partial results\n4. View detailed progress\nEnter choice (1/2/3/4): ").strip()
             
             if choice == '1':
                 print("🔄 Resuming from previous progress...")
@@ -190,11 +80,12 @@ async def main():
             elif choice == '2':
                 print("🆕 Starting fresh...")
                 existing_progress = None
+                processor.cleanup_progress_files()
                 break
             elif choice == '3':
-                if os.path.exists(PARTIAL_OUTPUT_CSV):
+                if os.path.exists(processor.partial_output_file):
                     print(f"\n📊 Partial results preview (first 5 rows):")
-                    with open(PARTIAL_OUTPUT_CSV, 'r') as f:
+                    with open(processor.partial_output_file, 'r') as f:
                         reader = csv.DictReader(f)
                         for i, row in enumerate(reader):
                             if i < 5:
@@ -205,13 +96,17 @@ async def main():
                 else:
                     print("❌ No partial results file found.")
                 continue
+            elif choice == '4':
+                print("\n📊 Detailed Progress Summary:")
+                print(processor.get_progress_summary())
+                continue
             else:
-                print("❌ Invalid choice. Please enter 1, 2, or 3.")
+                print("❌ Invalid choice. Please enter 1, 2, 3, or 4.")
     
     # Read the input CSV - handle the special structure
     rows = []
     with open(INPUT_CSV, 'r', encoding='utf-8') as file:
-        # Read the first line as headers (no metadata row to skip)
+        # Read the first line as headers
         lines = file.readlines()
         if len(lines) >= 2:
             # Use the first line as headers
@@ -241,14 +136,19 @@ async def main():
     # Initialize or resume progress
     if existing_progress:
         # Resume from previous progress
-        all_brands = existing_progress['all_brands']
         start_batch = existing_progress['current_batch']
+        processed_count = existing_progress['processed_count']
         print(f"🔄 Resuming from batch {start_batch + 1}/{total_batches}")
-        print(f"   Already processed: {len(all_brands)} keywords")
+        print(f"   Already processed: {processed_count} keywords")
+        
+        # Load existing partial results
+        existing_results = processor.read_partial_results(['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term'])
+        print(f"   Loaded {len(existing_results)} existing results")
     else:
         # Start fresh
-        all_brands = []
         start_batch = 0
+        processed_count = 0
+        existing_results = []
         print(f"🚀 Starting fresh processing of {total_batches} batches")
     
     print(f"\nProcessing {len(rows)} search terms...")
@@ -264,42 +164,72 @@ async def main():
             print(f"\n📦 Processing batch {i + 1}/{total_batches} (keywords {batch_start + 1}-{batch_end})...")
             
             try:
-                brands = await process_batch(search_terms)
-                all_brands.extend(brands)
+                # Use AIProcessor to process the batch
+                batch_results = await processor.process_batch(search_terms, "brand")
                 
-                # Save progress after each batch
-                processed_count = len(all_brands)
-                save_progress(i, total_batches, processed_count, all_brands)
+                # Add monthly data to each result
+                enriched_results = []
+                for j, result in enumerate(batch_results):
+                    if j < len(batch):
+                        enriched_result = result.copy()
+                        # Add all monthly data columns
+                        for header in headers:
+                            if header != 'Search Term':
+                                enriched_result[header] = batch[j].get(header, '')
+                        enriched_results.append(enriched_result)
                 
                 # Save partial results after each batch
-                save_partial_results(rows, all_brands, headers)
+                fieldnames = ['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term']
+                processor.save_partial_results(enriched_results, fieldnames)
                 
-                print(f"   ✅ Batch {i + 1} completed. Total processed: {processed_count}/{len(rows)}")
+                # Update progress
+                processed_count += len(search_terms)
+                processor.save_progress(i + 1, processed_count, len(rows))
+                
+                # Show progress bar
+                progress_bar = processor.get_progress_bar(processed_count, len(rows))
+                print(f"   ✅ Batch {i + 1} completed. {progress_bar}")
+                
+                # Show performance metrics
+                speed = processor.get_processing_speed()
+                eta = processor.get_eta(len(rows) - processed_count)
+                print(f"   📊 Speed: {speed:.1f} items/minute, ETA: {eta}")
                 
                 # Add delay between batches to avoid rate limits
                 if i + 1 < total_batches:
-                    print(f"   ⏳ Waiting {DELAY_BETWEEN_BATCHES} seconds before next batch...")
-                    await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+                    print(f"   ⏳ Waiting 2 seconds before next batch...")
+                    await asyncio.sleep(2)
                     
             except Exception as e:
-                if "RATE_LIMIT_HIT" in str(e):
-                    print(f"\n🚨 RATE LIMIT HIT! Saving progress and stopping gracefully...")
-                    print(f"   Progress saved: {len(all_brands)} keywords processed")
-                    print(f"   You can resume later by running the script again")
-                    print(f"   Partial results saved to: {PARTIAL_OUTPUT_CSV}")
-                    return False
-                else:
-                    print(f"❌ Error in batch {i + 1}: {e}")
-                    # Continue with next batch instead of crashing
-                    all_brands.extend(['error'] * len(search_terms))
-                    continue
+                print(f"❌ Error in batch {i + 1}: {e}")
+                # Continue with next batch instead of crashing
+                error_results = []
+                for j, search_term in enumerate(search_terms):
+                    error_result = {
+                        'Search Term': search_term,
+                        'Brand': 'ERROR_API'
+                    }
+                    # Add monthly data
+                    if j < len(batch):
+                        for header in headers:
+                            if header != 'Search Term':
+                                error_result[header] = batch[j].get(header, '')
+                    error_results.append(error_result)
+                
+                # Save error results
+                fieldnames = ['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term']
+                processor.save_partial_results(error_results, fieldnames)
+                
+                # Update progress
+                processed_count += len(search_terms)
+                processor.save_progress(i + 1, processed_count, len(rows))
+                continue
         
-        # All batches completed successfully
+        # All batches completed successfully!
         print(f"\n✅ All {total_batches} batches completed successfully!")
         
-        # Add brand column to each row
-        for i, row in enumerate(rows):
-            row['Brand'] = all_brands[i]
+        # Read all results from partial file
+        all_results = processor.read_partial_results(['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term'])
         
         # Write the final enriched data to output CSV
         with open(OUTPUT_CSV, 'w', newline='', encoding='utf-8') as file:
@@ -307,15 +237,12 @@ async def main():
             fieldnames = ['Search Term', 'Brand'] + [h for h in headers if h != 'Search Term']
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows(all_results)
         
         print(f"✅ Processing complete! Results saved to {OUTPUT_CSV}")
         
         # Clean up progress files on successful completion
-        if os.path.exists(PROGRESS_FILE):
-            os.remove(PROGRESS_FILE)
-        if os.path.exists(PARTIAL_OUTPUT_CSV):
-            os.remove(PARTIAL_OUTPUT_CSV)
+        processor.cleanup_progress_files()
         
         # Filter products with no brands
         print(f"\n🔍 Filtering products with no brands...")
@@ -333,8 +260,12 @@ async def main():
         
         # Display some results
         print("\nSample results:")
-        for i, row in enumerate(rows[:5]):
+        for i, row in enumerate(all_results[:5]):
             print(f"{i+1}: '{row['Search Term']}' -> Brand: '{row['Brand']}'")
+        
+        # Show final performance report
+        print(f"\n📈 Final Performance Report:")
+        print(processor.get_performance_report())
         
         print(f"\n📁 Files created:")
         print(f"  - {OUTPUT_CSV} (all results)")
@@ -346,15 +277,10 @@ async def main():
     except Exception as e:
         print(f"\n❌ Critical error occurred: {e}")
         print(f"💾 Progress has been saved. You can resume later.")
+        print(f"📊 Current progress:")
+        print(processor.get_progress_summary())
         return False
 
 if __name__ == "__main__":
-    # Check if OpenAI API key is set
-    if not os.getenv("OPENAI_API_KEY"):
-        print("❌ Error: OPENAI_API_KEY environment variable not set!")
-        print("Please set your OpenAI API key:")
-        print("export OPENAI_API_KEY='your-api-key-here'")
-        exit(1)
-    
     # Run the async main function
     asyncio.run(main())

@@ -303,11 +303,11 @@ Keywords: {keywords_text}
 
 Rules:
 - If it's a brand name, return the brand name
-- If it's not a brand, return "NO_BRAND"
+- If it's not a brand, return "no"
 - Separate each keyword:brand pair with commas
 - Use exact keyword spelling
 
-Example response: makeup:NO_BRAND, nike:nike, toothbrush:NO_BRAND"""
+Example response: makeup:no, nike:nike, toothbrush:no"""
 
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",

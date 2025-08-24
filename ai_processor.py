@@ -304,6 +304,7 @@ Keywords: {keywords_text}
 Rules:
 - If it's a brand name, return the brand name
 - If it's not a brand, return "no"
+- Generic product categories = "no" (electric toothbrush, body wash, water flosser)
 - Separate each keyword:brand pair with commas
 - Use exact keyword spelling
 
@@ -411,9 +412,15 @@ Example response: makeup:no, nike:nike, toothbrush:no"""
 
 Products: {terms_text}
 
+Important: Judge each keyword **independently**, not relative to others in the batch.
+
 Rate each product (0-5 scale) for:
 1. SEASONAL DEMAND: 0=flat year, 5=strongly seasonal
-2. SPECIFICITY (0=broad term like "shampoo", 5=very narrow like "creatine monohydrate 5g gummies").
+2. SPECIFICITY (0–5): How narrow is shopper intent?  
+    0–1 = almost all generic category terms (any 1–2 word basics).
+    2 = at least one real differentiator (electric toothbrush).
+    3 = ingredient-based or niche use (magnesium glycinate).
+    4–5 = ultra-modifier heavy / SKU-like.
 3. COMMODITY: 0=brand-owned, 5=commodity
 4. SUBSCRIBE & SAVE: 0=not suitable, 5=perfect for subscription
 

@@ -4,6 +4,22 @@ A comprehensive e-commerce product validation system that uses AI to assess prod
 
 ## 🚀 Features
 
+### FILTERS
+
+**STEP 0: Trend Filtering** (`step0_trend_filter.py`)
+• Removes one-word keywords (too non-specific)
+• Removes growing search trends (slope > 0)
+• Keeps: Multi-word keywords with declining/flat trends
+
+**STEP 1: Brand Identification** (`step1_brand_identifier.py`)
+• Removes branded products (can't compete without massive budgets)
+• Keeps: Generic product terms only
+
+**STEP 2: Product Assessment** (`step2_product_validator.py`)
+• No filtering - assesses all products across 7 criteria
+• Output: Final validated list with AI scores
+
+
 ### Core Functionality
 - **Brand Identification**: Automatically identifies branded vs. generic products using AI
 - **Product Assessment**: AI-powered evaluation of products across 7 key criteria
@@ -24,8 +40,9 @@ A comprehensive e-commerce product validation system that uses AI to assess prod
 
 ```
 product-validator_analytics/
-├── brand_identifier.py          # Brand identification with resume functionality
-├── product_validator.py         # AI product assessment
+├── step0_trend_filter.py        # Trend filtering and keyword specificity
+├── step1_brand_identifier.py   # Brand identification with resume functionality
+├── step2_product_validator.py  # AI product assessment
 ├── pipeline.py                  # Automated workflow runner
 ├── search_terms_sample.csv      # Input data (Search Term + monthly data)
 ├── csv_outputs/                 # Output directory
@@ -63,9 +80,18 @@ product-validator_analytics/
 
 ### Individual Scripts
 
+#### Trend Filtering
+```bash
+python3 step0_trend_filter.py
+```
+- Filters products by declining trends and keyword specificity
+- Removes one-word keywords (too non-specific)
+- Calculates linear regression slopes (ignoring zeros)
+- Keeps only declining or flat trends
+
 #### Brand Identification
 ```bash
-python3 brand_identifier.py
+python3 step1_brand_identifier.py
 ```
 - Processes input CSV to identify branded vs. generic products
 - **Resume functionality**: Automatically detects and offers to resume from previous runs
@@ -74,7 +100,7 @@ python3 brand_identifier.py
 
 #### Product Validation
 ```bash
-python3 product_validator.py
+python3 step2_product_validator.py
 ```
 - Assesses products using AI across 7 criteria
 - Processes in batches of 10 with 2-second delays

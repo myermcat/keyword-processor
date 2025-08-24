@@ -1,6 +1,7 @@
 import csv
 import os
 import asyncio
+from typing import Dict, Any
 from ai_processor import AIProcessor
 from dotenv import load_dotenv
 
@@ -8,26 +9,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-INPUT_CSV = "search_terms_sample.csv"
+INPUT_CSV = "csv_outputs/step0-trend-filtered.csv"  # Use output from trend filter
 CSV_FOLDER = "csv_outputs"
-OUTPUT_CSV = f"{CSV_FOLDER}/step0-brand-filtered.csv"
-NO_BRAND_CSV = f"{CSV_FOLDER}/step0-no-brand-products.csv"
+OUTPUT_CSV = f"{CSV_FOLDER}/step1-brand-filtered.csv"
+NO_BRAND_CSV = f"{CSV_FOLDER}/step1-no-brand-products.csv"
 BATCH_SIZE = 20  # Increased batch size for efficiency
 
-def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
+def filter_no_brand_products(input_csv: str, output_csv: str) -> Dict[str, Any]:
     """
     Filter products with no brands from the brand_filtered.csv and save to a new CSV.
-    Returns the number of no-brand products found.
+    Returns detailed filtering statistics.
     """
     no_brand_rows = []
+    branded_rows = []
     
     # Read the brand_filtered.csv file
     with open(input_csv, 'r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            # Only keep rows where Brand is "no"
+            # Track which products are kept vs filtered out
             if row['Brand'].lower() == 'no':
                 no_brand_rows.append(row)
+            else:
+                branded_rows.append(row)
     
     # Write the filtered data to the new CSV
     if no_brand_rows:
@@ -38,7 +42,14 @@ def filter_no_brand_products(input_csv: str, output_csv: str) -> int:
             writer.writeheader()
             writer.writerows(no_brand_rows)
     
-    return len(no_brand_rows)
+    # Return detailed stats
+    return {
+        'total_products': len(no_brand_rows) + len(branded_rows),
+        'no_brand_products': len(no_brand_rows),
+        'branded_products': len(branded_rows),
+        'kept_products': [row['Search Term'] for row in no_brand_rows],
+        'filtered_out_products': [row['Search Term'] for row in branded_rows]
+    }
 
 async def main():
     """
@@ -246,31 +257,33 @@ async def main():
         
         # Filter products with no brands
         print(f"\n🔍 Filtering products with no brands...")
-        no_brand_count = filter_no_brand_products(OUTPUT_CSV, NO_BRAND_CSV)
+        brand_stats = filter_no_brand_products(OUTPUT_CSV, NO_BRAND_CSV)
         
-        # Calculate how many were filtered out
-        branded_count = len(rows) - no_brand_count
+        # Save final brand stats for pipeline summary
+        brand_stats = filter_no_brand_products(OUTPUT_CSV, NO_BRAND_CSV)
+        stats_file = NO_BRAND_CSV.replace('.csv', '_stats.json')
+        stats_file_pipeline = "csv_outputs/step1_brand_stats_for_pipeline.json"  # For pipeline to read
         
-        if no_brand_count > 0:
-            print(f"✅ Found {no_brand_count} products with no brands. Saved to {NO_BRAND_CSV}")
-            print(f"❌ Filtered out {branded_count} branded products")
-            print(f"📊 Total: {len(rows)} products → {no_brand_count} kept, {branded_count} filtered out")
-        else:
-            print("ℹ️ No products without brands found.")
+        import json
+        with open(stats_file, 'w') as f:
+            json.dump(brand_stats, f, indent=2)
         
-        # Display some results
-        print("\nSample results:")
-        for i, row in enumerate(all_results[:5]):
-            print(f"{i+1}: '{row['Search Term']}' -> Brand: '{row['Brand']}'")
+        # Save stats for pipeline (won't be cleaned up)
+        with open(stats_file_pipeline, 'w') as f:
+            json.dump(brand_stats, f, indent=2)
         
-        # Show final performance report
-        print(f"\n📈 Final Performance Report:")
-        print(processor.get_performance_report())
-        
-        print(f"\n📁 Files created:")
+        print(f"📁 Files created:")
         print(f"  - {OUTPUT_CSV} (all results)")
         print(f"  - {NO_BRAND_CSV} (no-brand products only)")
         print(f"📁 All files saved to: {CSV_FOLDER}/")
+        
+        # Clean up immediate stats file after successful completion
+        print(f"\n🧹 Cleaning up temporary stats file...")
+        try:
+            os.remove(stats_file)
+            print(f"   ✅ Removed: {stats_file}")
+        except Exception as e:
+            print(f"   ⚠️ Warning: Could not remove stats file: {e}")
         
         return True
         

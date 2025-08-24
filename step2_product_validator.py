@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-INPUT_CSV = "csv_outputs/step0-no-brand-products.csv"  # Use output from brand identifier
+INPUT_CSV = "csv_outputs/step1-no-brand-products.csv"  # Use output from brand identifier
 CSV_FOLDER = "csv_outputs"
-ASSESSED_CSV = f"{CSV_FOLDER}/step1-products-assessed.csv"
+ASSESSED_CSV = f"{CSV_FOLDER}/step2-products-assessed.csv"
 BATCH_SIZE = 20  # Increased batch size for efficiency
 
 
@@ -33,7 +33,7 @@ async def main():
     # Check if input file exists
     if not os.path.exists(INPUT_CSV):
         print(f"❌ Error: {INPUT_CSV} not found!")
-        print("Please run brand_identifier.py first to create this file.")
+        print("Please run step1_brand_identifier.py first to create this file.")
         return
     
     # Initialize AIProcessor
@@ -255,26 +255,44 @@ async def main():
         # Clean up progress files on successful completion
         processor.cleanup_progress_files()
         
-        # Display summary
-        print(f"\n🎉 ASSESSMENT COMPLETE!")
+        # Save final assessment stats for pipeline summary
+        assessment_stats = {
+            'total_products_assessed': len(all_results),
+            'products_saved': len(filtered_products_clean),
+            'filtering_status': 'DISABLED - All products with assessments are saved',
+            'assessment_fields': ['Seasonal', 'Specificity', 'Commodity', 'Subscribe&Save', 'Gated', 'Electronics_Batteries', 'Insurance_Gov'],
+            'sample_assessments': []
+        }
+        for i, result in enumerate(all_results[:3]):
+            assessment_stats['sample_assessments'].append({
+                'search_term': result['Search Term'],
+                'seasonal': result.get('Seasonal', 'N/A'),
+                'specificity': result.get('Specificity', 'N/A'),
+                'commodity': result.get('Commodity', 'N/A'),
+                'subscribe_save': result.get('Subscribe&Save', 'N/A')
+            })
+        stats_file = ASSESSED_CSV.replace('.csv', '_stats.json')
+        stats_file_pipeline = "csv_outputs/step2_assessment_stats_for_pipeline.json"  # For pipeline to read
+        
+        import json
+        with open(stats_file, 'w') as f:
+            json.dump(assessment_stats, f, indent=2)
+        
+        # Save stats for pipeline (won't be cleaned up)
+        with open(stats_file_pipeline, 'w') as f:
+            json.dump(assessment_stats, f, indent=2)
+        
+        print(f"🎉 ASSESSMENT COMPLETE!")
         print(f"📁 Files created:")
         print(f"  - {ASSESSED_CSV} (all products with AI assessments + preserved monthly data)")
         
-        # Show final performance report
-        print(f"\n📈 Final Performance Report:")
-        print(processor.get_performance_report())
-        
-        print(f"\n📊 SUMMARY:")
-        print(f"  - Total products assessed: {len(all_results)}")
-        print(f"  - Products saved: {len(filtered_products_clean)} (ALL PRODUCTS - NO FILTERING)")
-        print(f"  - Filtering status: DISABLED - All products with assessments are saved")
-        
-        # Display some sample results
-        print(f"\n📝 Sample Results:")
-        for i, result in enumerate(all_results[:3]):
-            print(f"   {i+1}. {result['Search Term']}")
-            print(f"      Seasonal={result['Seasonal']}, Specificity={result['Specificity']}, Commodity={result['Commodity']}, Subscribe&Save={result['Subscribe&Save']}")
-            print(f"      Gated={result['Gated']}, Electronics={result['Electronics_Batteries']}, Insurance={result['Insurance_Gov']}")
+        # Clean up immediate stats file after successful completion
+        print(f"\n🧹 Cleaning up temporary stats file...")
+        try:
+            os.remove(stats_file)
+            print(f"   ✅ Removed: {stats_file}")
+        except Exception as e:
+            print(f"   ⚠️ Warning: Could not remove stats file: {e}")
         
         return True
         
